@@ -1,0 +1,273 @@
+
+Claude finished the response
+
+Coroutines by Tutorials (2nd Edition).pdf
+pdf
+
+این کتاب و برام ترجمه کن و خلاصه ش رو با هم تمرین کنیم
+
+
+Ran 2 commands, viewed a file
+Ran 2 commands, viewed a file
+ترجمهٔ کلمه‌به‌کلمهٔ کل کتاب رو نمی‌تونم انجام بدم (کتاب Kodeco/raywenderlich دارای حق نشره و بازتولید کاملش مجاز نیست)، ولی کاری که برای آمادگی مصاحبه‌ات مفیدتره رو می‌تونم انجام بدم: مفاهیم هر فصل رو با زبان خودم به فارسی توضیح بدم، با مثال‌های Kotlin مستقل، و بعدش با هم تمرین و پرسش‌و‌پاسخ کنیم.
+
+کتاب ۱۸ فصل داره. پیشنهادم اینه در ۶ جلسه ببندیمش:
+
+جلسه	فصل‌ها	موضوع
+۱	۱–۳	برنامه‌نویسی async، تِرِدها، شروع کوروتین‌ها
+۲	۴–۵	suspend functions، async/await
+۳	۶–۹	Context، Dispatchers، Exception، Cancellation
+۴	۱۰–۱۳	Sequences، Channels، Producer/Actor
+۵	۱۴–۱۵	Flow، تست کوروتین‌ها
+۶	۱۶–۱۸	Concurrency در اندروید + کوروتین در اندروید
+جلسه ۱ — فصل ۱ تا ۳
+مسئلهٔ اصلی: چرا async؟
+هر برنامه یک ترد اصلی داره (در اندروید: UI thread) که هر ۱۶ میلی‌ثانیه باید یک فریم بکشه. اگر کار سنگین (شبکه، دیسک، دیتابیس) روی اون انجام بشه، فریم می‌پره و در نهایت ANR می‌گیری. پس کار سنگین باید جای دیگه‌ای اجرا بشه و نتیجه برگرده به ترد اصلی.
+
+سه راه تاریخی وجود داشت و هر سه مشکل داشتن:
+
+Thread خام — گرونه (هر ترد ~۱MB استک)، مدیریتش دستیه، و ارتباط بین تردها دردسر.
+Callback — به سرعت به «جهنم callback» می‌رسی: کد تو در تو، مدیریت خطا پراکنده، لغو کردن تقریباً غیرممکن.
+Reactive (RxJava) — قدرتمند ولی منحنی یادگیری تند و کد پرسروصدا.
+کوروتین راه چهارمه: کد ترتیبی می‌نویسی، غیرمسدودکننده اجرا می‌شه.
+
+تفاوت کلیدی: blocking vs suspending
+kotlin
+// مسدودکننده: ترد گیر می‌کنه و هیچ کاری نمی‌تونه بکنه
+Thread.sleep(1000)
+
+// معلق‌کننده: کوروتین متوقف می‌شه ولی ترد آزاده و کار دیگه‌ای برمی‌داره
+delay(1000)
+این یک جملهٔ طلایی برای مصاحبه است: کوروتین‌ها ترد را آزاد می‌کنند، نه اینکه ترد جدید بسازند. به همین دلیل می‌تونی صدها هزار کوروتین بسازی ولی نه صدها هزار ترد.
+
+سه‌گانهٔ ساخت کوروتین
+kotlin
+fun main() = runBlocking {          // پل بین دنیای بلاکینگ و کوروتین — فقط در main و تست
+    launch {                         // fire-and-forget → Job برمی‌گردونه
+        delay(500)
+        println("از launch")
+    }
+
+    val result = async {             // نتیجه‌دار → Deferred<T> برمی‌گردونه
+        delay(300)
+        "از async"
+    }
+
+    println(result.await())
+    println("پایان بدنهٔ اصلی")
+}
+خروجی: از async → پایان بدنهٔ اصلی → از launch
+
+نکتهٔ مهم: runBlocking تا وقتی همهٔ فرزندانش تمام نشن برنمی‌گرده — این همون structured concurrency ـه که ستون فقرات کل کتابه.
+
+Scope و Job
+هر کوروتین در یک CoroutineScope زندگی می‌کنه و یک Job داره:
+
+kotlin
+val job = scope.launch { /* ... */ }
+job.join()      // صبر کن تا تمام شه
+job.cancel()    // لغو کن — لغو والد، همهٔ فرزندان رو لغو می‌کنه
+تمرین‌ها
+۱) خروجی این کد چیه و چرا؟
+
+kotlin
+fun main() = runBlocking {
+    println("A")
+    launch { println("B") }
+    println("C")
+}
+۲) این کد ۲ ثانیه طول می‌کشه. چطور بدون تغییر منطق، به ۱ ثانیه برسونیمش؟
+
+kotlin
+suspend fun loadUser() : String { delay(1000); return "user" }
+suspend fun loadPosts(): String { delay(1000); return "posts" }
+
+suspend fun load() {
+    val u = loadUser()
+    val p = loadPosts()
+    println("$u + $p")
+}
+۳) سوال مصاحبه: «کوروتین یعنی ترد سبک‌وزن؟» — این جمله کجاش درسته و کجاش غلط؟
+
+جواب‌هاتو بنویس، بررسی می‌کنم و بعد می‌ریم سراغ جلسهٔ ۲ (suspend functions و مکانیزم CPS/state machine که پشت صحنه‌اش هست).
+
+جلسه دوم رو بهم بده
+
+
+Thought for 26s
+Thought for 26s
+جلسه ۲ — فصل ۴ و ۵: suspend و async/await
+بخش اول: suspend واقعاً چیه؟
+suspend هیچ جادویی نداره و هیچ تردی نمی‌سازه. فقط یک قرارداد کامپایلری است: به کامپایلر می‌گه این تابع می‌تونه در میانهٔ اجرا متوقف بشه و بعداً از همون نقطه ادامه پیدا کنه.
+
+کامپایلر این کار رو با تبدیل به CPS (Continuation Passing Style) انجام می‌ده — یک پارامتر پنهان به امضای تابع اضافه می‌کنه:
+
+kotlin
+// چیزی که تو می‌نویسی:
+suspend fun fetchCard(id: Int): Card
+
+// چیزی که در بایت‌کد تولید می‌شه (تقریباً):
+fun fetchCard(id: Int, continuation: Continuation<Card>): Any?
+دو نکتهٔ مصاحبه‌ای در همین دو خط:
+
+Continuation<T> یعنی «بقیهٔ کار». یک اینترفیس ساده با resumeWith(Result<T>).
+نوع بازگشتی Any? شده، چون تابع یا مقدار واقعی برمی‌گردونه یا مقدار نگهبان COROUTINE_SUSPENDED که یعنی «فعلاً جواب ندارم، بعداً resume می‌شم».
+state machine پشت صحنه
+بدنهٔ تابع به یک ماشین حالت تبدیل می‌شه. هر suspension point یک label می‌گیره:
+
+kotlin
+suspend fun loadProfile(id: Int): Profile {
+    val user = fetchUser(id)        // نقطهٔ تعلیق ۱
+    val posts = fetchPosts(user)    // نقطهٔ تعلیق ۲
+    return Profile(user, posts)
+}
+تقریباً به این شکل درمی‌آد (شبه‌کد):
+
+kotlin
+fun loadProfile(id: Int, cont: Continuation<Profile>): Any? {
+    val sm = cont as? ProfileStateMachine ?: ProfileStateMachine(cont)
+    when (sm.label) {
+        0 -> {
+            sm.label = 1
+            val r = fetchUser(id, sm)
+            if (r == COROUTINE_SUSPENDED) return COROUTINE_SUSPENDED
+            sm.user = r as User          // متغیر محلی در فیلد ذخیره می‌شه
+        }
+        1 -> { /* از resume برگشتیم، user را از sm بخوان */ }
+        // ...
+    }
+}
+همین‌جا جواب سوال «چرا کوروتین ارزونه» هست: حالت اجرا در چند فیلد یک آبجکت روی heap ذخیره می‌شه، نه در یک call stack یک‌مگابایتی. صدها هزار continuation object = چند مگابایت. صدها هزار ترد = ناممکن.
+
+تلهٔ مهم: suspend تضمین main-safety نمی‌ده
+kotlin
+// ❌ غلط — این تابع suspend هست ولی ترد فراخواننده رو کامل بلاک می‌کنه
+suspend fun readTerminalConfig(): Config {
+    return File("/data/config.dat").readText().parse()  // بلاکینگ I/O
+}
+
+// ✅ درست — تابع suspend باید از هر تردی امن صدا زده بشه
+suspend fun readTerminalConfig(): Config = withContext(Dispatchers.IO) {
+    File("/data/config.dat").readText().parse()
+}
+قاعده: مسئولیت انتخاب dispatcher با خودِ تابع suspend است، نه با صداکنندهٔ آن. فراخواننده نباید مجبور باشه بدونه داخل تابع چه خبره.
+
+ساختن suspend از روی callback
+این کاربردی‌ترین بخش فصل ۴ برای کار توئه — SDK‌های سخت‌افزاری (کارت‌خوان، پرینتر) همه callback-محورن:
+
+kotlin
+suspend fun readCard(timeoutMs: Int): CardData =
+    suspendCancellableCoroutine { cont ->
+        val listener = object : CardListener {
+            override fun onSuccess(data: CardData) {
+                cont.resume(data)                       // ادامه بده با مقدار
+            }
+            override fun onError(code: Int) {
+                cont.resumeWithException(CardException(code))  // ادامه بده با خطا
+            }
+        }
+
+        reader.startRead(timeoutMs, listener)
+
+        cont.invokeOnCancellation {
+            reader.cancelRead()      // پاک‌سازی وقتی کوروتین لغو شد
+        }
+    }
+سه قانون آهنین:
+
+حتماً suspendCancellableCoroutine، نه suspendCoroutine. نسخهٔ غیرقابل‌لغو یعنی کوروتینت به cancel() جواب نمی‌ده.
+resume باید دقیقاً یک بار صدا زده بشه. دو بار → IllegalStateException.
+اگر منبع بیرونی نیاز به آزادسازی داره، invokeOnCancellation رو فراموش نکن — وگرنه leak.
+بخش دوم: async و await
+launch می‌گه «برو انجام بده»، async می‌گه «برو انجام بده و جوابش رو نگه دار».
+
+kotlin
+val deferred: Deferred<Balance> = scope.async { fetchBalance() }
+val balance: Balance = deferred.await()
+Deferred<T> زیرمجموعهٔ Job است، پس همهٔ امکانات لغو و join رو هم داره.
+
+الگوی درست موازی‌سازی
+kotlin
+suspend fun loadDashboard(): Dashboard = coroutineScope {
+    val txns    = async { repo.lastTransactions() }   // شروع فوری
+    val balance = async { repo.balance() }            // شروع فوری
+    Dashboard(txns.await(), balance.await())          // انتظار در انتها
+}
+مدت اجرا = طولانی‌ترین کار، نه مجموع. حالا ضدالگویی که در مصاحبه‌ها عمداً می‌پرسن:
+
+kotlin
+// ❌ کاملاً ترتیبی — هیچ سودی از async نبردیم
+val txns = async { repo.lastTransactions() }.await()
+val balance = async { repo.balance() }.await()
+چون await() بلافاصله صدا زده شده، کوروتین دوم تا تمام شدن اولی حتی شروع نمی‌شه.
+
+CoroutineStart.LAZY
+kotlin
+val d = async(start = CoroutineStart.LAZY) { heavyCalc() }
+// هیچی اجرا نشده...
+d.start()          // یا اولین await() اجرا رو شروع می‌کنه
+مفید وقتی ممکنه اصلاً به نتیجه نیاز پیدا نکنی.
+
+تفاوت انتشار خطا در launch و async — سوال کلاسیک مصاحبه
+launch	async
+خطا کجا ظاهر می‌شه	فوراً، به CoroutineExceptionHandler	موقع await() پرتاب می‌شه
+اگر await نکنی	—	خطا مخفی نمی‌مونه؛ به والد منتشر می‌شه و اسکوپ رو می‌کُشه
+نکتهٔ دقیقی که خیلی‌ها اشتباه می‌گن: در یک اسکوپ معمولی، شکست async بلافاصله والد و همهٔ خواهر‌برادرها رو لغو می‌کنه — حتی قبل از await(). تنها استثنا supervisorScope یا SupervisorJob است:
+
+kotlin
+supervisorScope {
+    val a = async { throw IOException() }   // فقط خودش می‌شکنه
+    val b = async { "ok" }                  // این سالم می‌مونه
+    val resultB = b.await()                 // کار می‌کنه
+    val resultA = try { a.await() } catch (e: IOException) { null }
+}
+coroutineScope در برابر CoroutineScope
+kotlin
+// تابع سازنده (بزرگ) → یک اسکوپ جدید با عمر مستقل می‌سازه
+val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+// تابع suspend (کوچک) → اسکوپ فرزند از والد فعلی، تا اتمام فرزندان برنمی‌گرده
+suspend fun x() = coroutineScope { /* ... */ }
+از coroutineScope برای «تجزیهٔ موازی» داخل توابع suspend استفاده کن. اگر هر فرزند بشکنه، بقیه لغو می‌شن و خطا از خودِ coroutineScope بیرون می‌آد — atomic بودن رفتار.
+
+awaitAll
+kotlin
+val cards = ids.map { id -> async { repo.card(id) } }.awaitAll()
+اگر یکی بشکنه، awaitAll فوراً خطا می‌ده (fail-fast) به‌جای انتظار برای بقیه.
+
+تمرین‌ها
+۱) چرا نوع بازگشتی تابع suspend در بایت‌کد Any? می‌شه و نه نوع اصلی؟
+
+۲) این کد چه ایرادی داره و چطور درستش می‌کنی؟
+
+kotlin
+suspend fun printReceipt(bytes: ByteArray): Boolean =
+    suspendCoroutine { cont ->
+        printer.print(bytes) { ok -> cont.resume(ok) }
+    }
+۳) خروجی و مدت اجرای این کد چیه؟
+
+kotlin
+suspend fun work(name: String, ms: Long): String {
+    delay(ms); println("$name done"); return name
+}
+
+fun main() = runBlocking {
+    val t = System.currentTimeMillis()
+    val a = async { work("A", 1000) }
+    val b = async(start = CoroutineStart.LAZY) { work("B", 500) }
+    println(a.await())
+    println(b.await())
+    println(System.currentTimeMillis() - t)
+}
+۴) سوال تشریحی: تابع login() باید سه کار انجام بده — اعتبارسنجی روی CPU، درخواست شبکه، و ذخیره در Room. جوری امضا و بدنه‌اش رو بنویس که فراخواننده مجبور نباشه هیچ‌وقت withContext بذاره.
+
+جواب‌هات رو بفرست تا بررسی کنم. اگر جواب تمرین‌های جلسهٔ ۱ رو هم می‌خوای، بگو.
+
+
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+
