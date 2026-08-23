@@ -1,0 +1,97 @@
+package ir.sadadpsp.apos.repo.paperroll;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+
+/**
+ * شمارنده مصرف رول کاغذ. مقدار انباشته در هر Logon گزارش و ریست می‌شود.
+ * عمداً static است تا نیازی به تغییر گراف Dagger نباشد.
+ */
+public final class PaperRollCounter {
+
+    private static final String PREFS = "paper_roll";
+    private static final String KEY_PENDING = "pending_cm";
+
+    /** ۸ dot بر میلی‌متر — با اندازه‌گیری روی دستگاه تأیید شده */
+    public static final int DOTS_PER_CM = 80;
+
+    private static final Object LOCK = new Object();
+
+    private PaperRollCounter() { }
+
+    private static SharedPreferences prefs(Context c) {
+        return c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    /** بعد از هر چاپ موفق. totalDots مجموع ارتفاع بیت‌مپ‌های چاپ‌شده. */
+    public static void addDots(Context c, int totalDots) {
+        if (c == null || totalDots <= 0) return;
+        long cm = Math.round(totalDots / (float) DOTS_PER_CM);
+        if (cm <= 0) return;
+        synchronized (LOCK) {
+            SharedPreferences p = prefs(c);
+            p.edit().putLong(KEY_PENDING, p.getLong(KEY_PENDING, 0) + cm).commit();
+        }
+    }
+
+    /** مقداری که باید در Logon گزارش شود. */
+    public static long pendingCm(Context c) {
+        if (c == null) return 0;
+        synchronized (LOCK) {
+            return prefs(c).getLong(KEY_PENDING, 0);
+        }
+    }
+
+    /**
+     * ریست پس از پاسخ موفق سوییچ.
+     * تفریق می‌کند نه صفر کردن — اگر بین ارسال و پاسخ رسیدی چاپ شود گم نمی‌شود.
+     */
+    public static void commitSent(Context c, long cm) {
+        if (c == null || cm <= 0) return;
+        synchronized (LOCK) {
+            SharedPreferences p = prefs(c);
+            long remaining = Math.max(0, p.getLong(KEY_PENDING, 0) - cm);
+            p.edit().putLong(KEY_PENDING, remaining).commit();
+        }
+    }
+}
+
+
+±+++++++++++++++++++++++++
+package ir.sadadpsp.apos.repo.switches.functioncodes;
+
+import java.nio.charset.StandardCharsets;
+import java.util.Locale;
+
+/** Paper roll usage — طول کاغذ مصرف‌شده بر حسب سانتی‌متر. نمونه: 059006999999 */
+public class ClientFunctionCode59 extends ClientFunctionCodeBase {
+
+    public static final String CODE = "059";
+    private static final int DATA_LEN = 6;
+    public static final long MAX_CM = 999_999L;
+
+    @Override
+    public String get(byte[] data) {
+        if (data == null || data.length == 0) return CODE + "000";
+        String s = new String(data, StandardCharsets.UTF_8);
+        return CODE + String.format(Locale.US, "%03d", s.length()) + s;
+    }
+
+    @Override
+    public <T> String get(T data) {
+        return "";
+    }
+
+    /** 123 → بایت‌های "000123" */
+    public static byte[] payload(long lengthCm) {
+        long v = Math.max(0, Math.min(lengthCm, MAX_CM));
+        return String.format(Locale.US, "%0" + DATA_LEN + "d", v)
+                .getBytes(StandardCharsets.UTF_8);
+    }
+}
+
+
+
++++++++++++++
+
+
