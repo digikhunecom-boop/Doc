@@ -1,0 +1,105 @@
+package ir.sadadpsp.apos.repo.paperroll;
+
+import android.content.Context;
+import android.content.SharedPreferences;
+import android.util.Log;
+
+import java.util.Locale;
+
+/**
+ * شمارنده مصرف رول کاغذ.
+ * <p>
+ * سه مقدار نگهداری می‌شود:
+ * <ul>
+ *   <li>pending — گزارش‌نشده به سوییچ؛ همین در Logon می‌رود و پس از پاسخ موفق ریست می‌شود</li>
+ *   <li>total   — مجموع تجمعی از ابتدای عمر ترمینال؛ هرگز ریست نمی‌شود</li>
+ *   <li>count   — تعداد رسیدهای چاپ‌شده</li>
+ * </ul>
+ * عمداً static است تا نیازی به تغییر گراف تزریق وابستگی نباشد.
+ */
+public final class PaperRollCounter {
+
+    public static final String TAG = "PaperRoll";
+
+    private static final String PREFS = "paper_roll";
+    private static final String KEY_PENDING = "pending_cm";
+    private static final String KEY_TOTAL = "total_cm";
+    private static final String KEY_COUNT = "receipt_count";
+    private static final String KEY_LAST = "last_cm";
+
+    /** ۸ dot بر میلی‌متر — با اندازه‌گیری روی دستگاه تأیید شده */
+    public static final int DOTS_PER_CM = 80;
+
+    private static final Object LOCK = new Object();
+
+    private PaperRollCounter() { }
+
+    private static SharedPreferences prefs(Context c) {
+        return c.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+    }
+
+    /**
+     * پس از هر چاپ موفق فراخوانی می‌شود.
+     *
+     * @param totalDots مجموع ارتفاع بیت‌مپ‌های چاپ‌شده در این رسید
+     */
+    public static void addReceipt(Context c, int totalDots) {
+        if (c == null || totalDots <= 0) return;
+        long cm = Math.round(totalDots / (float) DOTS_PER_CM);
+        if (cm <= 0) return;
+
+        long pending, total, count;
+        synchronized (LOCK) {
+            SharedPreferences p = prefs(c);
+            pending = p.getLong(KEY_PENDING, 0) + cm;
+            total = p.getLong(KEY_TOTAL, 0) + cm;
+            count = p.getLong(KEY_COUNT, 0) + 1;
+            p.edit()
+                    .putLong(KEY_PENDING, pending)
+                    .putLong(KEY_TOTAL, total)
+                    .putLong(KEY_COUNT, count)
+                    .putLong(KEY_LAST, cm)
+                    .commit();
+        }
+
+        Log.i(TAG, String.format(Locale.US,
+                "receipt #%d printed | dots=%d | this=%d cm | pending=%d cm | total=%d cm (%.2f m)",
+                count, totalDots, cm, pending, total, total / 100f));
+    }
+
+    /** مقداری که باید در Logon گزارش شود. */
+    public static long pendingCm(Context c) {
+        if (c == null) return 0;
+        synchronized (LOCK) {
+            return prefs(c).getLong(KEY_PENDING, 0);
+        }
+    }
+
+    /**
+     * ریست پس از پاسخ موفق سوییچ.
+     * تفریق می‌کند نه صفر کردن — اگر بین ارسال و پاسخ رسیدی چاپ شود گم نمی‌شود.
+     */
+    public static void commitSent(Context c, long cm) {
+        if (c == null || cm <= 0) return;
+        long remaining;
+        synchronized (LOCK) {
+            SharedPreferences p = prefs(c);
+            remaining = Math.max(0, p.getLong(KEY_PENDING, 0) - cm);
+            p.edit().putLong(KEY_PENDING, remaining).commit();
+        }
+        Log.i(TAG, "sent to switch: " + cm + " cm | remaining pending: " + remaining + " cm");
+    }
+
+    /** خلاصه یک‌خطی برای درج در لاگ. */
+    public static String summary(Context c) {
+        if (c == null) return "n/a";
+        synchronized (LOCK) {
+            SharedPreferences p = prefs(c);
+            return String.format(Locale.US,
+                    "receipts=%d | last=%d cm | pending=%d cm | total=%d cm (%.2f m)",
+                    p.getLong(KEY_COUNT, 0), p.getLong(KEY_LAST, 0),
+                    p.getLong(KEY_PENDING, 0), p.getLong(KEY_TOTAL, 0),
+                    p.getLong(KEY_TOTAL, 0) / 100f);
+        }
+    }
+}
